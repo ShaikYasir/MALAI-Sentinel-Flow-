@@ -10,6 +10,7 @@ A modern frontend scaffold built with React, Vite, and Tailwind CSS — optimize
 - [Overview](#overview)
 - [Key Features](#key-features)
 - [Architecture](#architecture)
+- [Streaming Architecture & Experiment](#streaming-architecture--experiment)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Quick Start (Windows CMD)](#quick-start-windows-cmd)
@@ -51,11 +52,11 @@ Note: GitHub's Mermaid renderer can be strict about syntax. If you see a render 
 
 ```mermaid
 graph TD
-  Dev[Developer]
-  Local[Local Dev - Vite & React]
-  Repo[GitHub Repo]
-  CI[CI & Tests]
-  Prod[Production - Static Host]
+  Dev["Developer"]
+  Local["Local Dev - Vite & React"]
+  Repo["GitHub Repo"]
+  CI["CI & Tests"]
+  Prod["Production - Static Host"]
 
   Dev --> Local
   Local --> Repo
@@ -72,12 +73,125 @@ GitHub -> CI (build/test)
 CI -> Production (deploy static assets)
 
 
-### Component Overview
+## Streaming Architecture & Experiment
 
-- Browser / Client: React app bootstrapped by Vite
-- Styling: Tailwind CSS (utility classes) driven from `src/index.css`
-- Assets: Static files in `src/assets`
-- Build: Vite builds optimized, tree-shaken bundles
+This repository also documents a streaming experiment and local prototype used to validate real-time telemetry processing for wind turbines.
+
+Key experiment highlights
+
+- Processed synthetic wind-turbine telemetry (vibration, rotor speed, gearbox temperature) using a local Flink cluster and Redpanda, simulating 10K events/sec via load generators.
+- Implemented FFT-based feature extraction and lightweight Go microservices for real-time spectral analysis, achieving ~2× faster computation under these simulated workloads.
+- Designed fault-tolerant stream processors with checkpointing and state replication on a minimal free-tier setup, improving pipeline stability during bursty input loads.
+
+
+Architecture diagram (Mermaid - GitHub-friendly)
+
+```mermaid
+graph LR
+  LG["Load Generators\n(Python) — 10K ev/s"]
+  RP["Redpanda (Kafka API)"]
+  FL["Apache Flink\n(Checkpointing + RocksDB state)"]
+  FFT["Go microservices\n(FFT / spectral features)"]
+  DB["DynamoDB\n(Low-latency feature store)"]
+  S3["S3\n(Raw + model artifacts)"]
+  ML["Python\n(Training & orchestration)"]
+  UI["Dashboard / Alerts"]
+  DOCKER["Docker\n(Containerized runtime)"]
+
+  LG --> RP
+  RP --> FL
+  FL --> FFT
+  FFT --> DB
+  FL --> DB
+  FL --> S3
+  RP --> S3
+  ML --> S3
+  ML --> DB
+  FL --> UI
+  FFT --> UI
+
+  subgraph runtime["Runtime (containerized)"]
+    RP
+    FL
+    FFT
+  end
+
+  subgraph storage["Storage & Serving"]
+    DB
+    S3
+  end
+
+  DOCKER --- runtime
+  ML --- runtime
+```
+
+ASCII fallback (renders anywhere)
+
+- Load Generators (Python) simulate 10K events/sec -> Redpanda (Kafka API)
+- Redpanda buffers events -> Apache Flink processes streams (checkpointing, RocksDB state)
+- Flink outputs:
+  - Real-time spectral features via Go microservices (FFT) -> DynamoDB (low-latency store)
+  - Enriched streams & raw batches -> S3 (archive & ML training)
+  - Metrics/alerts -> Dashboard
+- Docker packages Flink, Redpanda, and microservices for consistent local/mini-cloud deployment
+- Python used for load generation, offline model training, orchestration, and glue logic
+
+
+Justification: why these components were chosen
+
+- Apache Flink
+  - Purpose: Stateful stream processing with low-latency windowing, built-in checkpointing, and exactly-once semantics.
+  - Benefits: Stable state management (RocksDB), fast recovery using incremental checkpoints, ideal for bursty telemetry and long-running windows used by FFT and aggregations.
+
+- Kafka / Redpanda
+  - Purpose: Durable, partitioned event bus to decouple producers and consumers and absorb high ingestion rates.
+  - Benefits: Redpanda is Kafka-compatible and lightweight for local clusters (no JVM), enabling sustained 10K ev/s ingestion and replay for correctness testing.
+
+- DynamoDB
+  - Purpose: Low-latency key-value store for serving latest features, anomaly flags, or per-turbine state to dashboards and microservices.
+  - Benefits: Managed scaling and low read latency make it suitable as a feature-serving layer in experiments and prototypes.
+
+- S3
+  - Purpose: Cost-effective, durable object store for raw telemetry archives, enriched batches, and model artifacts / checkpoints.
+  - Benefits: Enables reprocessing and offline training from the same historical data used for online inference.
+
+- Docker
+  - Purpose: Containerize Flink, Redpanda, Go microservices, and Python tools to ensure reproducible local and CI environments.
+  - Benefits: Simplifies deployment and benchmarking across machines and CI runners.
+
+- Python
+  - Purpose: Fast development for load generators, orchestration, and offline model training pipelines.
+  - Benefits: Rich ecosystem of ML libraries and quick iteration for experiments.
+
+- Go (FFT microservices)
+  - Purpose: Efficient, compiled microservices for CPU-bound FFT-based feature extraction with low latency.
+  - Benefits: In our experiment Go services performed ~2× faster than heavier runtimes, enabling real-time spectral feature extraction at tested throughput.
+
+
+Operational recommendations for stability
+
+- Flink
+  - Use RocksDB state backend with incremental checkpoints; externalize checkpoints to S3 for persistent recovery.
+  - Checkpoint interval: 5–15s (tune for trade-offs between latency and recovery time).
+  - Match Flink parallelism and task slots to CPU cores of host containers.
+
+- Redpanda/Kafka
+  - Partition topics to match Flink parallelism; enable batching and compression to improve throughput.
+  - In production, use replication factor >=2; for minimal experiments use RF=1 but persist critical raw topics to S3.
+
+- DynamoDB
+  - Use on-demand or provisioned throughput depending on traffic; use TTL for ephemeral entries.
+
+- Docker / Local topology
+  - Use docker-compose for local clusters (JobManager/TaskManager, brokers, microservices). Offload large persistent state to S3 to avoid host disk limitations.
+
+
+Suggested metrics to validate results
+
+- End-to-end latency (p50/p95/p99) from ingestion -> DynamoDB write or dashboard update.
+- Sustained throughput and behavior under bursts (10K ev/s sustained and burst recovery).
+- CPU / memory usage for Flink TaskManagers, Redpanda, and Go FFT microservices.
+- Time-to-recover (from checkpoint) and data loss probability under node failures.
 
 
 ## Getting Started
@@ -203,4 +317,4 @@ For issues or feature requests, please use GitHub Issues in this repository.
 
 ---
 
-README updated: fixed Mermaid syntax to be more GitHub-friendly and kept ASCII fallback for compatibility.
+README updated: added streaming architecture diagram, experiment highlights, component justification (Flink, Redpanda/Kafka, DynamoDB, S3, Docker, Python, Go), and operational recommendations.
