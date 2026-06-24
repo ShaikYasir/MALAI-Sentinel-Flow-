@@ -44,27 +44,6 @@ This repository is meant to be a starting point for new applications — providi
 - 🧰 Opinionated defaults for structure and developer ergonomics
 
 
-## Architecture
-
-The project is intentionally simple and front-end focused. The diagram below shows the high-level flow between developer, local environment, CI, and production.
-
-Note: GitHub's Mermaid renderer can be strict about syntax. If you see a render error on GitHub, use the ASCII fallback shown below.
-
-```mermaid
-graph TD
-  Dev["Developer"]
-  Local["Local Dev - Vite & React"]
-  Repo["GitHub Repo"]
-  CI["CI & Tests"]
-  Prod["Production - Static Host"]
-
-  Dev --> Local
-  Local --> Repo
-  Repo --> CI
-  CI --> Prod
-  CI --> Repo
-```
-
 Fallback ASCII diagram (renders anywhere):
 
 Developer -> Local (Vite + React + Tailwind)
@@ -84,7 +63,7 @@ Key experiment highlights
 - Designed fault-tolerant stream processors with checkpointing and state replication on a minimal free-tier setup, improving pipeline stability during bursty input loads.
 
 
-Architecture diagram (Mermaid - GitHub-friendly)
+Architecture diagram 
 
 ```mermaid
 graph LR
