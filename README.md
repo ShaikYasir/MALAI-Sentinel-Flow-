@@ -47,13 +47,15 @@ This repository is meant to be a starting point for new applications — providi
 
 The project is intentionally simple and front-end focused. The diagram below shows the high-level flow between developer, local environment, CI, and production.
 
+Note: GitHub's Mermaid renderer can be strict about syntax. If you see a render error on GitHub, use the ASCII fallback shown below.
+
 ```mermaid
-flowchart TD
+graph TD
   Dev[Developer]
-  Local[Local Dev (Vite + React)]
+  Local[Local Dev - Vite & React]
   Repo[GitHub Repo]
-  CI[CI / Tests]
-  Prod[Production (Static Host)]
+  CI[CI & Tests]
+  Prod[Production - Static Host]
 
   Dev --> Local
   Local --> Repo
@@ -201,4 +203,4 @@ For issues or feature requests, please use GitHub Issues in this repository.
 
 ---
 
-README updated: professional overview, diagrams (Mermaid + ASCII fallback), setup instructions, and contribution guidelines.
+README updated: fixed Mermaid syntax to be more GitHub-friendly and kept ASCII fallback for compatibility.
